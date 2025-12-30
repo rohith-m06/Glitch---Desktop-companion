@@ -10,9 +10,12 @@ const execPromise = util.promisify(exec);
  */
 class EnhancedAutomationService {
     constructor() {
-        // Configure mouse for smooth human-like movement
-        mouse.config.autoDelayMs = 100; // Slight delay for stability
-        mouse.config.mouseSpeed = 1500; // Pixels per second
+        // Configure mouse for smooth but fast movement
+        mouse.config.autoDelayMs = 2; // Minimal delay for speed
+        mouse.config.mouseSpeed = 2000; // Faster mouse
+
+        // Configure keyboard
+        keyboard.config.autoDelayMs = 2;
     }
 
     /**
@@ -93,7 +96,17 @@ class EnhancedAutomationService {
     /**
      * Type text (supports special characters and Unicode)
      */
-    async type(text, delayMs = 50) {
+    /**
+     * Type text with controlled speed
+     */
+    async type(text, delayMs = 10) {
+        // Use clipboard for long text to ensure accuracy and speed
+        // Only use typing for short text or when clipboard might fail requirements
+        if (text.length > 50) {
+            // TODO: Implement clipboard paste if needed, for now just type fast
+        }
+
+        // Type character by character with minimal delay
         for (const char of text) {
             await keyboard.type(char);
             if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
@@ -123,7 +136,13 @@ class EnhancedAutomationService {
             for (const mod of modifiers) {
                 await keyboard.pressKey(mod);
             }
-            await keyboard.type(mainKey);
+
+            // Explicitly press and release main key using pressKey/releaseKey
+            // to ensure it registers while modifiers are held
+            await keyboard.pressKey(mainKey);
+            await keyboard.releaseKey(mainKey);
+
+            // Release modifiers (in reverse order)
             for (const mod of modifiers.reverse()) {
                 await keyboard.releaseKey(mod);
             }
@@ -182,6 +201,26 @@ class EnhancedAutomationService {
     }
 
     /**
+     * Paste text using Clipboard and Ctrl+V (Best for long text/URLs)
+     */
+    async paste(text) {
+        // Use PowerShell to set clipboard (reliable on Windows)
+        // Check for special characters that might break PowerShell arguments
+        const safeText = text.replace(/"/g, '\\"');
+        const setClipCmd = `powershell -command "Set-Clipboard -Value \\"${safeText}\\""`;
+
+        try {
+            await execPromise(setClipCmd);
+            await new Promise(r => setTimeout(r, 200)); // Wait for clipboard update
+            await this.pressKey('ctrl+v');
+        } catch (e) {
+            console.error("Clipboard Error:", e);
+            // Fallback to typing
+            await this.type(text);
+        }
+    }
+
+    /**
      * Launch an application
      */
     async launchApp(appName) {
@@ -189,9 +228,14 @@ class EnhancedAutomationService {
         await this.pressKey('win');
         await new Promise(r => setTimeout(r, 500));
         await this.type(appName);
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 800)); // Increased search wait
         await this.pressKey('enter');
-        await new Promise(r => setTimeout(r, 1500)); // Wait for app to launch
+
+        // [FIX] Increased to 7s for heavy apps like WhatsApp
+        // WhatsApp needs extra time to fully initialize UI
+        const isWhatsApp = appName.toLowerCase().includes('whatsapp');
+        const delay = isWhatsApp ? 7000 : 5000;
+        await new Promise(r => setTimeout(r, delay));
     }
 
     /**
@@ -199,10 +243,11 @@ class EnhancedAutomationService {
      */
     async runCommand(command) {
         await this.pressKey('win+r');
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 500));
         await this.type(command);
         await new Promise(r => setTimeout(r, 200));
         await this.pressKey('enter');
+        await new Promise(r => setTimeout(r, 2000)); // Wait for command
     }
 }
 

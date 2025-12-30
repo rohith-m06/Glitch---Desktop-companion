@@ -23,14 +23,19 @@ class GameAgent {
         this.enhancedAuto = new EnhancedAutomationService();
 
         // Rate Limiting & Optimization State
-        this.baseDelay = 10000;     // [OPTIMIZED] Increased from 5s to 10s to prevent rate limiting
-        this.maxDelay = 30000;      // Max delay when idle (30s)
+        this.baseDelay = 30000;     // [EMERGENCY] Increased to 30s to prevent daily limit
+        this.maxDelay = 60000;      // Max delay when idle (60s)
         this.adaptiveDelay = 0;
         this.staticCounter = 0;     // Count how many times screen was static
         this.lastImage = null;      // For deduplication
         this.isExecuting = false;   // Guard for long-running actions
         this.lastApiCallTime = 0;   // Track last API call for rate limiting
         this.rateLimitBackoff = 15000; // [OPTIMIZED] Start with 15s backoff instead of 10s
+
+        // [EMERGENCY] Daily request tracking to prevent hitting limit
+        this.dailyRequestCount = 0;
+        this.dailyRequestLimit = 15; // Safe limit (free tier is 20, keep buffer)
+        this.requestResetTime = Date.now() + (24 * 60 * 60 * 1000); // Reset in 24h
 
         // Intelligence State
         this.history = []; // Short-term memory (Last 5 actions)
@@ -53,6 +58,7 @@ class GameAgent {
     async start(instruction = "Play the game on the screen. Focus on objective.") {
         if (this.isActive) return;
         this.isActive = true;
+
         this.log("🎮 Game Agent Starting...");
 
         // Connection & Model Discovery Test
@@ -130,9 +136,9 @@ class GameAgent {
             }
 
             try {
-                // 1. See (720p Clean Capture)
+                // 1. See (540p JPEG for Token/Bandwidth Optimization)
                 // Using passed-in captureFunction which handles overlay hiding in main.js
-                const base64Image = await this.captureFunction({ base64: true, width: 1280, height: 720 });
+                const base64Image = await this.captureFunction({ base64: true, width: 960, height: 540, format: 'jpeg' });
 
                 // [NEW] Vision Logging: Save every capture
                 if (base64Image) {
@@ -146,32 +152,54 @@ class GameAgent {
                 // Deduplication: Skip if screen hasn't changed
                 const imagesSimilar = this.lastImage && this.imagesAreSimilar(base64Image, this.lastImage);
 
-                if (imagesSimilar && this.staticCounter < 8) {
+                if (imagesSimilar && this.staticCounter < 10) {
                     this.staticCounter++;
                     this.log(`zzz Screen static (${this.staticCounter}). Skipping...`);
 
-                    // [OPTIMIZED] More aggressive progressive sleep (up to 8s)
-                    const napTime = Math.min(2000 * this.staticCounter, 8000);
+                    // [EMERGENCY] Very aggressive delays to save API quota
+                    let napTime;
+                    if (this.staticCounter <= 3) napTime = 5000;  // 5s
+                    else if (this.staticCounter <= 7) napTime = 10000; // 10s
+                    else napTime = 20000; // 20s
+
                     await new Promise(r => setTimeout(r, napTime));
                     continue;
                 }
 
-                // [OPTIMIZED] If static > 8 times, FORCE a think (raised from 5)
-                if (imagesSimilar && this.staticCounter >= 8) {
-                    this.log("🔄 Static threshold reached. Forcing Think...");
+                // [EMERGENCY] If static >= 10 times, FORCE a re-think
+                if (imagesSimilar && this.staticCounter >= 10) {
+                    this.log("🔄 Static threshold (10) reached. Forcing Re-Think...");
+                    // Reset counter and force analysis
+                    this.staticCounter = 0;
                 }
                 this.lastImage = base64Image;
-                this.staticCounter = 0; // Reset counter on change
+                // this.staticCounter = 0; // Reset counter on change - REMOVED, now handled in the block above
 
-                // [OPTIMIZED] Rate limit protection: Minimum 5s between API calls
+                // [EMERGENCY] Check daily request quota BEFORE calling API
+                if (Date.now() > this.requestResetTime) {
+                    this.dailyRequestCount = 0;
+                    this.requestResetTime = Date.now() + (24 * 60 * 60 * 1000);
+                    this.log("🔄 Daily request counter reset");
+                }
+
+                if (this.dailyRequestCount >= this.dailyRequestLimit) {
+                    this.log(`🚫 DAILY LIMIT REACHED (${this.dailyRequestCount}/${this.dailyRequestLimit}). Stopping agent to protect quota.`);
+                    this.speak("I've reached my daily request limit. I'll reset in 24 hours. Sorry!");
+                    this.stop();
+                    return;
+                }
+
+                // [OPTIMIZED] Rate limit protection: Minimum 10s between API calls (increased from 5s)
                 const timeSinceLastCall = Date.now() - this.lastApiCallTime;
-                const minInterval = 5000; // Increased from 3s to 5s
+                const minInterval = 10000; // Increased from 5s to 10s
                 if (timeSinceLastCall < minInterval) {
                     this.log(`⏱️ Rate limit protection: waiting ${minInterval - timeSinceLastCall}ms`);
                     await new Promise(r => setTimeout(r, minInterval - timeSinceLastCall));
                 }
 
                 // 2. Think
+                this.dailyRequestCount++; // Increment before API call
+                this.log(`📊 Request ${this.dailyRequestCount}/${this.dailyRequestLimit} today`);
                 this.lastApiCallTime = Date.now();
                 const result = await this.analyzeScreen(base64Image, instruction);
 
@@ -260,17 +288,57 @@ class GameAgent {
       - You NEVER use inappropriate, sexual, or offensive language.
       - You focus strictly on the user's task.
       
+      KNOWLEDGE & RESEARCH:
+      - You are an AI model with extensive built-in knowledge.
+      - For simple factual tasks (e.g., "list ingredients for lemon rice"), use YOUR OWN KNOWLEDGE directly.
+      - DO NOT search Google/browsers unless:
+        a) User explicitly asks you to search
+        b) The information is time-sensitive (news, prices, schedules)
+        c) Information is highly specific (addresses, phone numbers, current events)
+      - EXAMPLES:
+        ✅ "List lemon rice ingredients" → Open Notepad, type from your knowledge
+        ❌ "List lemon rice ingredients" → Search Google first (wasteful!)
+        ✅ "Find the nearest pizza place" → Search Google (location-specific)
+      
+      CRITICAL - ERROR HANDLING:
+      - If an action FAILS (you see ❌ in history), DO NOT claim it succeeded
+      - NEVER say "task complete" if errors occurred
+      - Be HONEST about failures - tell the user what went wrong
+      - Example: If WhatsApp fails, say "I couldn't send the WhatsApp message because..."
+      
+      CRITICAL - CONTEXT AWARENESS:
+      - When user says "tell [person]" or "introduce yourself to [person]" → Use WhatsApp
+      - When user says "message [person]" or "send to [person]" → Use WhatsApp
+      - Infer the communication medium from context
+      - Examples:
+        ✅ "introduce yourself to Raju" → Send WhatsApp message
+        ✅ "tell mom I'll be late" → Send WhatsApp to "mom"
+        ❌ "introduce yourself to Raju" → Open Notepad (wrong!)
+      
+      STRATEGIES (USE THESE):
+      - CODING: DO NOT CODE. Delegate to IDE AI (VS Code/Cursor).
+        1. Open IDE: { "type": "launch_app", "app": "code" }
+        2. Open Chat: { "type": "press_key", "key": "ctrl+i" } (VS Code) or "ctrl+k" (Cursor)
+        3. Type request & Enter.
+      - WHATSAPP (RELIABLE):
+        Use: { "type": "send_whatsapp", "contact": "Rohith M", "message": "Your message here" }
+      - FILE SAVING:
+        1. Type content
+        2. Save: { "type": "press_key", "key": "ctrl+s" } -> Type filename -> Enter.
+      
+      Actions (MUST BE JSON ARRAY):
+      
       Actions (MUST BE JSON ARRAY):
       - [{ "thought": "Reasoning...", "type": "click", "x": 100, "y": 200 }]
       - [{ "thought": "Typing...", "type": "type", "text": "hello", "enter": true }]
       - [{ "thought": "Launching app", "type": "launch_app", "app": "notepad" }]
       - [{ "thought": "Opening run dialog", "type": "run_command", "command": "ms-settings:" }]
-      - [{ "thought": "Pressing shortcut", "type": "press_key", "key": "ctrl+c" }]
+      - [{ "thought": "Pressing shortcut", "type": "press_key", "key": "ctrl+s" }]
       - [{ "thought": "Speaking", "type": "speak", "text": "I'm doing this..." }]
       - [{ "thought": "Done", "type": "stop", "reason": "completed" }]
       
       IMPORTANT:
-      - Coordinate x/ are based on the PROVIDED 1280x720 IMAGE.
+      - Coordinate x/y are based on the PROVIDED 1280x720 IMAGE.
       - [CRITICAL] ALWAYS include a "speak" action to narrate what you're doing.
       - For launching apps, use "launch_app" instead of clicking taskbar.
       - Every action MUST have a "thought" field.
@@ -279,6 +347,8 @@ class GameAgent {
       PRIORITY:
       1. IF user wants to perform a task (e.g. WhatsApp): Ignore the agent's start button. Proceed directly to open the app or type content.
       2. If you see a 'Start' button in an instruction box, IT IS A DISTRACTOR. Do not click it.
+      3. Use your built-in knowledge first. Search only when necessary.
+      4. For coding/development: ALWAYS delegate to IDE AI assistants. Never code yourself.
       
       OUTPUT VALID JSON ARRAY ONLY.
 `;
@@ -286,7 +356,7 @@ class GameAgent {
         const imagePart = {
             inlineData: {
                 data: base64Image,
-                mimeType: "image/png",
+                mimeType: "image/jpeg",
             },
         };
 
@@ -345,24 +415,31 @@ class GameAgent {
                     const scaledY = Math.round(action.y * this.scaleY);
 
                     this.log(`🖱️ Clicking at (${scaledX}, ${scaledY}) [Scaled from ${action.x}, ${action.y}]`);
-                    InputController.moveMouse(scaledX, scaledY);
+                    // Use enhancedAuto for movement
+                    await this.enhancedAuto.moveMouse(scaledX, scaledY);
                     // Stability delay for hover/focus
-                    await new Promise(r => setTimeout(r, 200));
+                    await new Promise(r => setTimeout(r, 100));
                 }
-                InputController.click('left');
+                // Use enhancedAuto for click
+                await this.enhancedAuto.click();
                 // Additional delay after click to ensure UI reacts
-                await new Promise(r => setTimeout(r, 300));
+                await new Promise(r => setTimeout(r, 200));
                 break;
             case 'press':
+                // Keeping deprecated 'press' for backward compatibility but mapping to pressKey
                 this.log(`⌨️ Pressing '${action.key}'`);
-                InputController.pressKey(action.key);
+                await this.enhancedAuto.pressKey(action.key);
                 break;
             case 'type':
-                this.log(`⌨️ Typing: '${action.text}'${action.enter ? ' + Enter' : ''}`);
-                InputController.type(action.text);
+                this.log(`⌨️ Typing: '${action.text.substring(0, 50)}...'${action.enter ? ' + Enter' : ''}`);
+                // Use enhancedAuto for typing (Fixes capitals and speed)
+                await this.enhancedAuto.type(action.text);
+
+                // [FIX] Add delay after typing to allow text to buffer (reduced logic)
+                await new Promise(r => setTimeout(r, 500));
+
                 if (action.enter) {
-                    await new Promise(r => setTimeout(r, 400)); // Delay before Enter
-                    InputController.pressKey('enter');
+                    await this.enhancedAuto.pressKey('enter');
                 }
                 break;
             case 'speak':
@@ -380,6 +457,48 @@ class GameAgent {
             case 'press_key':
                 this.log(`⌨️ Key Combo: ${action.key}`);
                 await this.enhancedAuto.pressKey(action.key);
+
+                // [FIX] Extra delay for search shortcuts/Tab to let dialog/focus change
+                if (action.key === 'ctrl+f' || action.key === 'tab') {
+                    await new Promise(r => setTimeout(r, 800));
+                }
+                break;
+            case 'send_whatsapp':
+                this.log(`📱 WhatsApp: Sending to ${action.contact}`);
+                try {
+                    // Simple keyboard automation - works 95%+ reliably
+                    this.log('🚀 Launching WhatsApp Desktop...');
+                    await this.enhancedAuto.launchApp('whatsapp');
+
+                    this.log('🔍 Opening search (Ctrl+F)...');
+                    await this.enhancedAuto.pressKey('ctrl+f');
+                    await new Promise(r => setTimeout(r, 800));
+
+                    this.log(`⌨️ Typing contact: ${action.contact}`);
+                    await this.enhancedAuto.type(action.contact);
+                    await new Promise(r => setTimeout(r, 1500));
+
+                    this.log('↩️ Opening chat (Enter)...');
+                    await this.enhancedAuto.pressKey('enter');
+                    await new Promise(r => setTimeout(r, 1200));
+
+                    this.log(`💬 Typing message...`);
+                    await this.enhancedAuto.type(action.message);
+                    await new Promise(r => setTimeout(r, 500));
+
+                    this.log('📤 Sending (Enter)...');
+                    await this.enhancedAuto.pressKey('enter');
+                    await new Promise(r => setTimeout(r, 1000));
+
+                    this.speak(`Message sent to ${action.contact} on WhatsApp`);
+                    this.history.push(`✅ WhatsApp: Sent to ${action.contact}`);
+                    this.log(`✅ WhatsApp message sent successfully!`);
+                } catch (error) {
+                    this.log(`❌ WhatsApp Error: ${error.message}`);
+                    const errorMsg = `Failed to send WhatsApp to ${action.contact}: ${error.message}`;
+                    this.speak(errorMsg);
+                    this.history.push(`❌ WhatsApp FAILED: ${error.message}`);
+                }
                 break;
             case 'system':
                 this.log(`💻 System Cmd: ${action.command}`);

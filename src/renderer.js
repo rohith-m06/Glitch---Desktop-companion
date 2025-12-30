@@ -156,10 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Default: Ignore mouse (Pass-through)
     setIgnoreMouseEvents(true);
 
-    // [NEW] Listen for Agent Logs
-    ipcRenderer.on('agent-log', (event, msg) => {
-        logToScreen("🤖 " + msg);
-    });
+    // [REMOVED] agent-log listener - user prefers console only
 
     ipcRenderer.on('agent-speak', (event, text) => {
         showBubble(text);
