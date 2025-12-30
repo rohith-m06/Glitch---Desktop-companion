@@ -3,10 +3,36 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
+const CredentialService = require('./services/CredentialService');
+
 
 let mainWindow;
 
-function createWindow() {
+// Keep track of windows
+let setupWindow;
+
+function createSetupWindow() {
+  setupWindow = new BrowserWindow({
+    width: 600,
+    height: 600,
+    backgroundColor: '#1a1a1a',
+    title: "AI Companion Setup",
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
+    icon: path.join(__dirname, 'assets/icon.png'),
+    autoHideMenuBar: true
+  });
+
+  setupWindow.loadFile(path.join(__dirname, 'setup-wizard.html'));
+
+  setupWindow.on('closed', () => {
+    setupWindow = null;
+  });
+}
+
+function createMainWindow() {
   const { width, height } = require('electron').screen.getPrimaryDisplay().workAreaSize;
 
   mainWindow = new BrowserWindow({
@@ -25,7 +51,8 @@ function createWindow() {
       enableRemoteModule: true,
       backgroundThrottling: false
     },
-    icon: path.join(__dirname, 'assets/icon.png')
+    icon: path.join(__dirname, 'assets/icon.png',),
+    skipTaskbar: true // Don't show in taskbar for overlay
   });
 
   // Default: Ignore mouse events (pass through)
@@ -34,7 +61,7 @@ function createWindow() {
   // Mouse event forwarding handler
   ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    win.setIgnoreMouseEvents(ignore, { forward: true });
+    if (win) win.setIgnoreMouseEvents(ignore, { forward: true });
   });
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
@@ -50,8 +77,8 @@ function createWindow() {
 
   console.log('🚀 AI Companion Started!');
   console.log('📍 Environment loaded:', {
-    hasGeminiKey: !!process.env.GEMINI_API_KEY,
-    hasElevenLabsKey: !!process.env.ELEVENLABS_API_KEY
+    hasGeminiKey: !!process.env.GOOGLE_API_KEY,
+    hasElevenLabsKey: !!process.env.ELEVEN_API_KEY
   });
 
   // Grant permissions for voice/mic
@@ -65,8 +92,25 @@ function createWindow() {
   });
 }
 
+async function initApp() {
+  try {
+    const creds = await CredentialService.loadCredentials();
+
+    if (creds.isComplete) {
+      createMainWindow();
+    } else {
+      console.log('⚠️ Credentials missing, launching setup wizard...');
+      createSetupWindow();
+    }
+  } catch (err) {
+    console.error('Initialization failed:', err);
+  }
+}
+
+
 // App lifecycle
-app.whenReady().then(createWindow);
+app.whenReady().then(initApp);
+
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -306,6 +350,19 @@ ipcMain.handle('stop-game-agent', async () => {
   const agent = getGameAgent();
   agent.stop();
   return "Game Agent Stopped";
+});
+
+ipcMain.handle('save-setup-info', async (event, data) => {
+  const CredentialService = require('./services/CredentialService');
+  CredentialService.saveCredentials(data);
+  return true;
+});
+
+ipcMain.on('setup-complete', () => {
+  if (setupWindow) {
+    setupWindow.close();
+    createMainWindow();
+  }
 });
 
 console.log('✅ Electron app initialized');
