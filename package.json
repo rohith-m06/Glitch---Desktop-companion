@@ -36,9 +36,20 @@
     "playwright": "^1.57.0",
     "three": "^0.182.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KirthanNB/AI-Companion.git"
+  },
   "build": {
     "appId": "com.yourname.aicompanion",
     "productName": "AI Desktop Companion",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "KirthanNB",
+        "repo": "AI-Companion"
+      }
+    ],
     "directories": {
       "output": "dist"
     },
