@@ -64,7 +64,10 @@ class CredentialService {
             process.env.ELEVEN_API_KEY = elevenKey;
             process.env.ELEVENLABS_API_KEY = elevenKey;
         }
-        if (elevenVoice) process.env.ELEVEN_VOICE_ID = elevenVoice;
+        if (elevenVoice) {
+            process.env.ELEVEN_VOICE_ID = elevenVoice;
+            process.env.ELEVENLABS_VOICE_ID = elevenVoice; // [FIX] Ensure redundancy
+        }
 
         return {
             geminiKey,
@@ -95,7 +98,10 @@ class CredentialService {
             process.env.ELEVEN_API_KEY = elevenKey;
             process.env.ELEVENLABS_API_KEY = elevenKey;
         }
-        if (elevenVoice) process.env.ELEVEN_VOICE_ID = elevenVoice;
+        if (elevenVoice) {
+            process.env.ELEVEN_VOICE_ID = elevenVoice;
+            process.env.ELEVENLABS_VOICE_ID = elevenVoice;
+        }
     }
 
     clearCredentials() {
