@@ -53,6 +53,11 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "**/*",
+      "!node_modules",
+      ".env"
+    ],
     "win": {
       "target": [
         "nsis"

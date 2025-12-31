@@ -22,29 +22,30 @@ class CredentialService {
 
         // 2. Fallback to process.env (Check BOTH possible keys)
         const envGemini = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+        const envEleven = process.env.ELEVEN_API_KEY || process.env.ELEVENLABS_API_KEY; // [FIX] Check both
 
+        // --- GEMINI LOGIC ---
         let usingDefaultGemini = false;
-
-        // [FIX] If stored key matches .env key (from old migration), treat as default
+        // If stored key matches .env key (from old migration), treat as default
         if (geminiKey && geminiKey === envGemini) {
             usingDefaultGemini = true;
-            // Optionally clear it from store to 'undo' the migration
             this.store.delete('google_api_key');
-            geminiKey = envGemini; // Ensure we use it
+            geminiKey = envGemini;
         }
         else if (!geminiKey && envGemini) {
             geminiKey = envGemini;
             usingDefaultGemini = true;
         }
 
+        // --- ELEVENLABS LOGIC ---
         let usingDefaultEleven = false;
-        if (elevenKey && elevenKey === process.env.ELEVEN_API_KEY) {
+        if (elevenKey && elevenKey === envEleven) {
             usingDefaultEleven = true;
             this.store.delete('eleven_api_key');
-            elevenKey = process.env.ELEVEN_API_KEY;
+            elevenKey = envEleven;
         }
-        else if (!elevenKey && process.env.ELEVEN_API_KEY) {
-            elevenKey = process.env.ELEVEN_API_KEY;
+        else if (!elevenKey && envEleven) {
+            elevenKey = envEleven;
             usingDefaultEleven = true;
         }
 
