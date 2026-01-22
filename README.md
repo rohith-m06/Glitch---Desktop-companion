@@ -1,38 +1,182 @@
-# 🤖 AI Desktop Companion
+# 🤖 AI Desktop Companion — *Glitch*
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
-![Status](https://img.shields.io/badge/status-Stable-success.svg)
+<p align="center">
+  <video src="./assets/anim.mp4" autoplay loop muted playsinline width="70%"></video>
+</p>
 
-**Your intelligent, proactive, and charming desktop assistant.**
+<p align="center">
+  <b>The AI that lives on your desktop — sees, thinks, and acts.</b>
+</p>
 
-AI Desktop Companion is not just a chatbot; it's a fully autonomous agent that lives on your desktop. Powered by **Google Gemini** and **ElevenLabs**, it can see your screen, control your mouse, write code, automate workflows, and chat with a distinct personality.
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg">
+  <img src="https://img.shields.io/badge/version-1.0.2-green.svg">
+  <img src="https://img.shields.io/badge/platform-Windows-darkgrey.svg">
+  <img src="https://img.shields.io/badge/status-Stable-success.svg">
+</p>
+
+---
+
+## 🧠 What is Glitch?
+
+We grew up dreaming of companions like **JARVIS** — agents that don’t just listen, but *act*.  
+Somewhere along the way, assistants got stuck in browser tabs.
+
+**Glitch breaks the fourth wall of the operating system.**
+
+AI Desktop Companion (Glitch) is a **fully multimodal, autonomous desktop agent** that:
+
+- 👁️ Sees your screen  
+- 🎤 Talks with you  
+- 🤖 Controls your system  
+- 🖥️ Lives directly on your desktop as a playful character  
+- …and a lot more (I want you to explore 😄)
+
+This isn’t just an assistant you *use*.  
+It’s one you *work with*.
 
 ---
 
-## ✨ Features
+## 🎬 Live Demo
 
-### 🧠 Advanced Intelligence
-- **Natural Conversation**: Chat naturally with a witty, helpful personality using Gemini 2.0 Flash.
-- **Voice Interaction**: High-quality, low-latency text-to-speech via ElevenLabs.
-- **Context Awareness**: Remembers your recent interactions and context.
+▶️ **Full Demo (Vimeo)**  
+https://vimeo.com/1150677379
+  
+> The Vimeo demo shows Glitch executing real tasks end-to-end.
 
-### 👁️ Computer Vision
-- **Screen Understanding**: "See" what's on your screen and ask questions about it.
-- **Visual Automation**: Click buttons, find icons, and interact with UI elements visually.
-
-### 🤖 Autonomous Agent
-- **Desktop Control**: Move mouse, click, type, and launch applications.
-- **Project Scaffolding**: Create entire coding projects (React, Python, Node) with a single voice command.
-- **Browser Automation**: Open websites, search the web, and extract information.
-
-### 🎨 Customizable & Fun
-- **Interactive Character**: A charming robot avatar that reacts to clicks and events.
-- **Voice Customization**: Choose from different ElevenLabs voices.
-- **Personality Tuning**: Adjust the system prompt to change how the AI behaves.
+([Also check out our landing page here!!](https://landingpagereact-chi.vercel.app/))
 
 ---
+
+## ✨ What Can Glitch Do?
+
+### 🖥️ Lives on Your Desktop
+
+<p align="center">
+  <img src="./assets/overlay.png" width="80%">
+</p>
+
+Glitch runs as a **transparent, click-through desktop overlay**.  
+He shares your workspace instead of hiding in a window or sidebar.
+
+---
+
+### 🎨 Interactive & Playful Characters
+
+<p align="center">
+  <img src="./assets/character.png" width="60%">
+</p>
+
+- Interactive pixel-style characters  
+- Drag, click, and interact  
+- Customizable appearance and behavior  
+
+Inspired by classic desktop pets, powered by modern multimodal AI.
+
+---
+
+### ⚙️ All Modes, One Companion
+
+<p align="center">
+  <img src="./assets/modes.png" width="70%">
+</p>
+
+Everything is built in:
+
+- 🎤 **Voice Mode**
+- 👁️ **Vision Mode**
+- 🤖 **Agent Mode**
+- ⚙️ **Settings** (character & voice customization)
+
+No switching apps. No broken context.
+
+---
+
+### 🤖 Agent Mode — Real Automation
+
+<p align="center">
+  <img src="./assets/agent.png" width="80%">
+</p>
+
+This is **not just another chatbot**.
+
+Agent Mode lets Glitch:
+- Control mouse & keyboard
+- Open applications
+- Execute multi-step workflows
+- Do real things on your system
+
+There’s always a stop button. Safety matters.
+
+---
+
+### 🚀 Developer Accelerator
+
+<p align="center">
+  <img src="./assets/developer.png" width="80%">
+</p>
+
+Glitch is especially useful while building.
+
+Here, it creates a complete **Next.js project structure** from a single voice command — turning ideas into runnable code instantly.
+
+---
+
+### 📝 Smart Summarization & Notes
+
+<p align="center">
+  <img src="./assets/Notepad.png" width="80%">
+</p>
+
+Glitch can:
+- Summarize information
+- Extract key points
+- Save them directly to **Notepad or files**
+
+Your AI remembers *for* you.
+
+---
+
+### 🌐 On-Demand Web Search
+
+<p align="center">
+  <img src="./assets/googleSearch.png" width="80%">
+</p>
+
+Ask once — Glitch searches Google, parses results, and gives you the useful bits.
+
+Hands-free.
+
+---
+
+### 🧠 The Personality: Glitch
+
+<p align="center">
+  <img src="./assets/Glitch.png" width="70%">
+</p>
+
+Glitch isn’t robotic.
+
+He has personality.  
+He reacts.  
+He feels present.
+
+Working with AI finally feels *alive*, not transactional.
+
+---
+
+## 🧬 How It Works (High Level)
+
+Glitch uses a **hybrid multimodal agent architecture**:
+
+- 🧠 **Brain** — Google Gemini 2.0 Flash (chat + vision)
+- 👁️ **Vision** — Screen understanding via screenshots
+- 🎤 **Voice** — ElevenLabs (low-latency TTS)
+- 🤖 **Automation** — nut.js (mouse, keyboard, OS control)
+- 🖥️ **UI Soul** — Electron + PixiJS (desktop overlay)
+
+---
+
 
 ## 🚀 Quick Start
 
@@ -106,12 +250,6 @@ To create an installer for your OS:
 ```bash
 # Windows
 npm run build:win
-
-# macOS
-npm run build:mac
-
-# Linux
-npm run build:linux
 ```
 
 ---
