@@ -1,7 +1,7 @@
 const InputController = require('../services/InputController');
 
 console.log("🧪 Testing Input Bridge...");
-console.log("👉 I will move the mouse in a square and type 'hello' in 3 seconds.");
+console.log("👉 move the mouse in a square and type 'hello' in 3 seconds.");
 
 setTimeout(async () => {
     try {
@@ -24,7 +24,7 @@ setTimeout(async () => {
         console.log("⌨️ Typing...");
         InputController.type("hello from test");
 
-        console.log("✅ Test Complete. Did you see movement?");
+        console.log("✅ Test Complete");
         process.exit(0);
     } catch (e) {
         console.error("❌ Test Failed:", e);

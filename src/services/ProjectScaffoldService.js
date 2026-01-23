@@ -146,7 +146,7 @@ class ProjectScaffoldService {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Project</title>
+    <title>${projectName}</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -294,7 +294,7 @@ Ask your AI assistant to:
 - Optimize images before adding
 
 ---
-*Created by AI-Companion Desktop Assistant*`,
+*Created by AI-Companion Desktop Assistant (Glitch AI)*`,
 
             nextjs: (name, desc) => `# ${name}
 

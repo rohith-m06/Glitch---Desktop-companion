@@ -1437,7 +1437,7 @@ async function processAudioMessage(base64Audio) {
         
         PROJECT CREATION RULES:
         - When user asks to build/create websites, apps, APIs, or any developer project, use the "project" action.
-        - This will: 1) Create project folder with structure, 2) Generate comprehensive README.md, 3) Open in VS Code, 4) Trigger Ctrl+I for AI assistance.
+        - This will: 1) Create project folder with structure, 2) Generate detailed comprehensive README.md, 3) Open in VS Code, 4) Trigger Ctrl+I for AI assistance.
         - Supported project types: website, nextjs, api, python, vue, electron, mobile, generic.
         - Examples of project requests: "build a portfolio website", "create a React app", "make an API for users", "python web scraper"
         
