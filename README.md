@@ -1,8 +1,9 @@
 # 🤖 AI Desktop Companion — *Glitch*
 
 <p align="center">
-  <video src="./assets/anim.mp4" autoplay loop muted playsinline width="70%"></video>
+  <img src="./assets/anim.gif" width="70%" />
 </p>
+
 
 <p align="center">
   <b>The AI that lives on your desktop — sees, thinks, and acts.</b>
