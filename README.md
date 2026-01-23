@@ -19,7 +19,10 @@
 ---
 
 ## 🧠 What is Glitch?
-
+<p align="center" >
+  <img  src="https://media1.tenor.com/m/dzSWLc8TGtgAAAAC/jarvis.gif" width="250">
+  (Just kidding, don't try that!!)
+</p>
 We grew up dreaming of companions like **JARVIS** — agents that don’t just listen, but *act*.  
 Somewhere along the way, assistants got stuck in browser tabs.
 
@@ -266,5 +269,10 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  Made with ❤️ by Kirthan NB
+  <img src="https://media1.tenor.com/m/DwLEW1YOP-4AAAAd/bowing-thank-you.gif" width="120">
+</p>
+
+
+<p align="center">
+  Made with ❤️ by Kirthan NB & Rohith M
 </p>
