@@ -48,7 +48,7 @@ https://vimeo.com/1150677379
   
 > The Vimeo demo shows Glitch executing real tasks end-to-end.
 
-([Also check out our landing page here!!](https://landingpagereact-chi.vercel.app/))
+([Also check out our landing page here!!](https://ai-desktop-companion-glitch.vercel.app/))
 
 ---
 
