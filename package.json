@@ -34,7 +34,8 @@
     "node-fetch": "^2.7.0",
     "node-telegram-bot-api": "^0.67.0",
     "playwright": "^1.57.0",
-    "three": "^0.182.0"
+    "three": "^0.182.0",
+    "ws": "^8.19.0"
   },
   "repository": {
     "type": "git",

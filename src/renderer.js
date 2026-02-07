@@ -5,7 +5,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // --- Configuration ---
 // [DYNAMIC] Model will be selected based on API key permissions
 let GEMINI_MODEL = "gemini-3-flash-preview";
-const ELEVEN_MODEL = "eleven_turbo_v2_5";
+// REPLACED ElevenLabs with Gemini Live
 const MEOW_SOUNDS = ["meow1.mp3", "meow2.mp3", "meow3.mp3"];
 
 // --- State ---
@@ -14,8 +14,6 @@ let isGameMode = false; // [NEW] Track game mode state
 let mediaRecorder = null;
 let audioChunks = [];
 let geminiKey = null;
-let elevenKey = null;
-let voiceId = null; // [NEW] Declare global voiceId
 let roamMode = 'FULL'; // FULL, BOTTOM, NONE
 let currentRequestId = 0; // [NEW] Track requests for interruption
 let isVisionActive = false; // [NEW] Manual vision toggle
@@ -94,25 +92,161 @@ function logToScreen(msg) {
     ipcRenderer.send('log-to-console', msg);
 
     // Also try to show critical errors in the speech bubble if possible
-    if (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('failed')) {
+    if (msg && (msg.toLowerCase().includes('error') || msg.toLowerCase().includes('failed'))) {
         showBubble(`⚠️ ${msg}`);
     }
+}
 
-    const overlay = document.getElementById('debug-overlay');
-    if (overlay) {
-        overlay.style.display = 'block'; // Ensure visible logic
-        const div = document.createElement('div');
-        div.textContent = `> ${msg}`;
-        div.style.background = "rgba(0,0,0,0.7)"; // background only on text line
-        div.style.marginBottom = "2px";
-        div.style.padding = "2px 5px";
-        div.style.borderRadius = "4px";
-        overlay.prepend(div);
+// --- Realtime Voice Logic ---
+let pcmContext = null;
+let pcmProcessor = null;
+let micSource = null;
+let isVoiceMode = false;
+let nextPlayTime = 0;
 
-        // Auto-cleanup logging
-        if (overlay.children.length > 10) overlay.lastElementChild.remove();
+ipcRenderer.on('voice-mode-changed', async (event, isActive) => {
+    isVoiceMode = isActive;
+    const micBtn = document.getElementById('btn-mic');
+    if (isActive) {
+        logToScreen("🎙️ Voice Mode Active");
+        showBubble("Listening... (Realtime)");
+        if(micBtn) micBtn.classList.add('listening');
+        startRealtimeAudio();
+    } else {
+        logToScreen("mic off");
+        showBubble("Voice Mode Off");
+        if(micBtn) micBtn.classList.remove('listening');
+        stopRealtimeAudio();
+    }
+});
+
+async function startRealtimeAudio() {
+    try {
+        if (!pcmContext) {
+            pcmContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        } else if (pcmContext.state === 'suspended') {
+            await pcmContext.resume();
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 16000
+            }
+        });
+        
+        micSource = pcmContext.createMediaStreamSource(stream);
+        // Create script processor: bufferSize, inputChannels, outputChannels
+        pcmProcessor = pcmContext.createScriptProcessor(4096, 1, 1);
+        
+        pcmProcessor.onaudioprocess = (e) => {
+            if (!isVoiceMode) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            
+            // Convert Float32 to Int16 PCM
+            const pcmBuffer = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+                let s = Math.max(-1, Math.min(1, inputData[i]));
+                // PCM 16-bit
+                pcmBuffer[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            
+            // Convert to Base64
+            // Using a more efficient approach than spread if possible, but spread is ok for 4096 items
+            let binary = '';
+            const bytes = new Uint8Array(pcmBuffer.buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            ipcRenderer.send('audio-input-chunk', base64);
+        };
+        
+        // Mute output to avoid feedback loop
+        const gainNode = pcmContext.createGain();
+        gainNode.gain.value = 0;
+        
+        micSource.connect(pcmProcessor);
+        pcmProcessor.connect(gainNode);
+        gainNode.connect(pcmContext.destination);
+        
+    } catch (e) {
+        logToScreen("Error starting mic: " + e.message);
     }
 }
+
+function stopRealtimeAudio() {
+    if (pcmProcessor) {
+        pcmProcessor.disconnect();
+        pcmProcessor = null;
+    }
+    if (micSource) {
+        micSource.disconnect();
+        micSource = null;
+    }
+    // We don't close context to reuse it for playback which might be on different sample rate? 
+    // Actually, playback usually requires its own context if sample rates differ.
+}
+
+// PCM Player (from Gemini)
+let playbackContext = null;
+
+ipcRenderer.on('play-audio-chunk', async (event, base64) => {
+    // Gemini Output is 24000Hz usually
+    if (!playbackContext) playbackContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    if (playbackContext.state === 'suspended') await playbackContext.resume();
+
+    try {
+        const binary = atob(base64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        
+        for(let i=0; i<int16.length; i++) {
+            float32[i] = int16[i] / 32768.0;
+        }
+        
+        const buffer = playbackContext.createBuffer(1, float32.length, 24000); 
+        buffer.getChannelData(0).set(float32);
+        
+        const source = playbackContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(playbackContext.destination);
+        
+        const now = playbackContext.currentTime;
+        const start = Math.max(now, nextPlayTime);
+        source.start(start);
+        nextPlayTime = start + buffer.duration;
+        
+        // Clean old time to avoid huge drift if silence
+        if (nextPlayTime < now) nextPlayTime = now;
+
+        // Visual Feedback
+        if (actors && actors.human) {
+             actors.human.isTalking = true;
+             actors.human.state = 'TALK';
+             // Stop talking after duration
+             setTimeout(() => { 
+                // Only stop if we haven't added more audio? 
+                // Simple version: just stop after duration.
+                if (playbackContext.currentTime >= nextPlayTime - 0.1) {
+                    actors.human.isTalking = false; 
+                    actors.human.state = 'IDLE'; 
+                }
+             }, buffer.duration * 1000);
+        }
+
+    } catch (e) {
+        console.error("Audio Playback Error:", e);
+    }
+});
 
 document.addEventListener('DOMContentLoaded', async () => {
     logToScreen('✨ Phase 3: Desktop Overlay Active');
@@ -126,8 +260,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 2. Load Keys
     try {
         geminiKey = await ipcRenderer.invoke('get-env', 'GEMINI_API_KEY');
-        elevenKey = await ipcRenderer.invoke('get-env', 'ELEVENLABS_API_KEY');
-        voiceId = await ipcRenderer.invoke('get-env', 'ELEVENLABS_VOICE_ID');
+        // ElevenLabs Removed
+        // elevenKey = await ipcRenderer.invoke('get-env', 'ELEVENLABS_API_KEY');
+        // voiceId = await ipcRenderer.invoke('get-env', 'ELEVENLABS_VOICE_ID');
         logToScreen(`✅ Keys Loaded.`);
 
         // [NEW] Select Best Model Dynamically
@@ -1389,12 +1524,8 @@ function toggleListening() {
         actors.human.state = 'IDLE';
     }
 
-    if (!mediaRecorder) { logToScreen("⚠️ Mic not ready"); return; }
-    if (mediaRecorder.state === "inactive") {
-        audioChunks = []; mediaRecorder.start();
-        document.getElementById('btn-mic').classList.add('listening');
-        showBubble("Listening... 👂"); logToScreen("🔴 Recording...");
-    } else { mediaRecorder.stop(); logToScreen("🛑 Processing..."); }
+    // [NEW] Use Realtime Voice Mode
+    ipcRenderer.invoke('toggle-voice-mode');
 }
 
 function blobToBase64(blob) {
@@ -1588,50 +1719,11 @@ async function processAudioMessage(base64Audio) {
 async function speak(text) {
     try {
         logToScreen("🗣️ Processing Speech...");
-        if (!elevenKey) {
-            logToScreen("❌ No ElevenLabs Key");
-            fallbackSpeak(text);
-            return;
-        }
-        if (!voiceId) {
-            logToScreen("⚠️ No Voice ID, using fallback.");
-            fallbackSpeak(text);
-            return;
-        }
-
-        logToScreen("📡 Sending to ElevenLabs...");
-        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey },
-            body: JSON.stringify({ text: text, model_id: ELEVEN_MODEL, voice_settings: { stability: 0.5, similarity_boost: 0.8 } })
-        });
-
-        // [FIX] Better Error Handling
-        if (!response.ok) {
-            const errText = await response.text();
-            logToScreen(`❌ TTS API Error: ${response.status} - ${errText}`);
-            logToScreen("⚠️ Switching to Fallback Voice...");
-            fallbackSpeak(text); // [NEW] Failover
-            return;
-        }
-
-        const blob = await response.blob();
-        const audio = document.getElementById('audio-player');
-        audio.src = URL.createObjectURL(blob);
-
-        if (actors.human) {
-            actors.human.isTalking = true;
-            actors.human.state = 'TALK';
-            audio.onended = () => { actors.human.isTalking = false; actors.human.state = 'IDLE'; };
-        }
-        logToScreen("🔊 Playing audio...");
-        audio.play().catch(e => {
-            logToScreen("❌ Play Error: " + e.message);
-            fallbackSpeak(text); // [NEW] Failover on play error
-        });
+        // ElevenLabs Removed. Using fallback/local TTS for system messages.
+        fallbackSpeak(text);
     } catch (e) {
-        logToScreen("❌ TTS Network Error: " + e.message);
-        fallbackSpeak(text); // [NEW] Failover on network error
+        logToScreen("❌ TTS Error: " + e.message);
+        fallbackSpeak(text); 
     }
 }
 
@@ -1686,12 +1778,50 @@ document.addEventListener('DOMContentLoaded', () => {
     const controlsArea = document.querySelector('.controls-area');
     const toggleBtn = document.getElementById('btn-toggle-controls');
 
+    // [NEW] Restore Persistence
+    if (controlsArea) {
+        // 1. Restore Position
+        const savedPos = localStorage.getItem('controlsPos');
+        if (savedPos) {
+            try {
+                const pos = JSON.parse(savedPos);
+                controlsArea.style.bottom = 'auto'; // Disable default bottom
+                controlsArea.style.left = pos.left;
+                controlsArea.style.top = pos.top;
+                controlsArea.style.transform = 'none'; // Disable center transform
+                
+                // Restore Orientation if needed (simple check)
+                 const leftVal = parseInt(pos.left);
+                 if (!isNaN(leftVal) && ((leftVal < 100) || (leftVal > window.innerWidth - 100))) {
+                     controlsArea.style.flexDirection = 'column';
+                     controlsArea.style.padding = '10px 5px';
+                 }
+            } catch (e) {
+                console.error("Failed to load controls position", e);
+            }
+        }
+
+        // 2. Restore State (Expanded/Collapsed)
+        const savedState = localStorage.getItem('controlsState');
+        if (savedState === 'collapsed') {
+            controlsArea.classList.add('collapsed');
+             // Hide buttons immediately
+            const btns = controlsArea.querySelectorAll('button:not(#btn-toggle-controls)');
+            btns.forEach(b => b.style.display = 'none');
+            if(toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
+        }
+    }
+
     // 1. Toggle Logic
+    
     if (toggleBtn) {
         toggleBtn.addEventListener('click', (e) => {
             e.stopPropagation(); // Don't trigger drag
             controlsArea.classList.toggle('collapsed');
             const isCollapsed = controlsArea.classList.contains('collapsed');
+
+            // Save State
+            localStorage.setItem('controlsState', isCollapsed ? 'collapsed' : 'expanded');
 
             // Hide/Show other buttons
             const btns = controlsArea.querySelectorAll('button:not(#btn-toggle-controls)');
@@ -1775,6 +1905,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isDraggingControls) {
                 isDraggingControls = false;
                 controlsArea.style.cursor = 'move';
+                
+                // Save Position
+                const rect = controlsArea.getBoundingClientRect();
+                const pos = { left: rect.left + 'px', top: rect.top + 'px' };
+                localStorage.setItem('controlsPos', JSON.stringify(pos));
             }
         });
 

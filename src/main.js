@@ -1,5 +1,5 @@
 // src/main.js - Electron Main Process
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 // [FIX] Explicit path for production (.env is in app root, main.js is in src/)
@@ -115,6 +115,19 @@ function createMainWindow() {
 
 async function initApp() {
   try {
+    const { globalShortcut } = require('electron');
+    // Global Hotkey for Voice Mode (Ctrl+Shift+L)
+    globalShortcut.register('CommandOrControl+Shift+L', () => {
+        const service = getGeminiLiveService();
+        if (service.isActive) {
+             service.stop();
+             if(mainWindow) mainWindow.webContents.send('voice-mode-changed', false);
+        } else {
+             service.start();
+             if(mainWindow) mainWindow.webContents.send('voice-mode-changed', true);
+        }
+    });
+
     const creds = await CredentialService.loadCredentials();
 
     if (creds.isComplete) {
@@ -237,18 +250,28 @@ ipcMain.handle('capture-clean', async (event, options = { width: 1024, height: 5
   return null;
 });
 
-// Browser Automation Handler
-ipcMain.handle('perform-action', async (event, action) => {
+// Extracted logic for reusability
+async function handlePerformAction(event, action) {
+  const { shell } = require('electron'); // Ensure shell is available
   try {
     console.log('🤖 Performing action:', action);
 
     if (action.type === 'open') {
-      await Automation.navigate(action.url);
-      return "Opened " + action.url;
+      // Prefer system default browser for simple "Open" commands
+      // This is faster and uses the user's logged-in session (cookies etc)
+      let url = action.url;
+      if (!url.startsWith('http')) url = 'https://' + url;
+      
+      console.log(`Open External: ${url}`);
+      await shell.openExternal(url);
+      return "Opened " + url;
     }
 
     if (action.type === 'search') {
-      await Automation.search(action.query);
+      // Use system browser for search too
+      const query = encodeURIComponent(action.query);
+      const url = `https://www.google.com/search?q=${query}`;
+      await shell.openExternal(url);
       return "Searched for " + action.query;
     }
 
@@ -318,7 +341,10 @@ ipcMain.handle('perform-action', async (event, action) => {
     console.error('Automation failed:', error);
     return "Failed: " + error.message;
   }
-});
+}
+
+// Browser Automation Handler
+ipcMain.handle('perform-action', handlePerformAction);
 
 // Project Creation Handler
 ipcMain.handle('create-project', async (event, { name, description, projectType }) => {
@@ -366,6 +392,53 @@ ipcMain.handle('start-game-agent', async (event, instruction) => {
   agent.start(instruction);
   return "Game Agent Started";
 });
+
+// Gemini Live Voice Mode Setup
+let geminiLiveInstance = null;
+function getGeminiLiveService() {
+  if (!geminiLiveInstance) {
+    const GeminiLiveService = require('./services/GeminiLiveService');
+    const agent = getGameAgent();
+    geminiLiveInstance = new GeminiLiveService(process.env.GEMINI_API_KEY, agent);
+    
+    // Wire up audio output
+    geminiLiveInstance.on('audio', (data) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('play-audio-chunk', data);
+      }
+    });
+
+    // Wire up Direct Tool Actions
+    geminiLiveInstance.on('tool-action', async (action) => {
+        console.log(`[GeminiLive] Executing Fast Action:`, action);
+        // Reuse the handler logic
+        await handlePerformAction(null, action);
+    });
+  }
+  return geminiLiveInstance;
+}
+
+ipcMain.handle('toggle-voice-mode', async () => {
+  const service = getGeminiLiveService();
+  if (service.isActive) {
+    service.stop();
+    if(mainWindow) mainWindow.webContents.send('voice-mode-changed', false);
+    return false;
+  } else {
+    service.start();
+    if(mainWindow) mainWindow.webContents.send('voice-mode-changed', true);
+    return true;
+  }
+});
+
+ipcMain.on('audio-input-chunk', (event, chunk) => {
+   const service = getGeminiLiveService();
+   if (service.isActive) {
+       // chunk is usually base64 from renderer
+       service.sendAudioChunk(chunk);
+   }
+});
+// End Gemini Live Setup
 
 ipcMain.handle('stop-game-agent', async () => {
   const agent = getGameAgent();
