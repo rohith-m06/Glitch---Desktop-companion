@@ -19,9 +19,12 @@ async function captureScreen({ base64 = true, width = 1920, height = 1080 } = {}
         if (!primarySource) throw new Error("No screen source found.");
 
         if (base64) {
-            return primarySource.thumbnail.toPNG().toString('base64');
+            // [OPTIMIZATION] Use JPEG (quality 80) instead of PNG
+            // PNG encoding is slow (100ms+) and produces large files (2MB+)
+            // JPEG encoding is fast (10ms) and produces small files (200KB)
+            return primarySource.thumbnail.toJPEG(80).toString('base64');
         } else {
-            return primarySource.thumbnail.toPNG();
+            return primarySource.thumbnail.toJPEG(80);
         }
     } catch (error) {
         console.error("Screen capture failed:", error);

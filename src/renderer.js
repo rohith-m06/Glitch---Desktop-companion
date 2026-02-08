@@ -519,6 +519,10 @@ function setRoamMode(mode) {
 
 function toggleVision(btn) {
     isVisionActive = !isVisionActive;
+    
+    // Notify Main Process to start/stop sending screens to Gemini
+    ipcRenderer.send('vision-mode-changed', isVisionActive);
+
     if (isVisionActive) {
         btn.style.background = "#4ade80";
         btn.innerHTML = '<i class="fas fa-eye"></i>';
@@ -1808,35 +1812,118 @@ document.addEventListener('DOMContentLoaded', () => {
              // Hide buttons immediately
             const btns = controlsArea.querySelectorAll('button:not(#btn-toggle-controls)');
             btns.forEach(b => b.style.display = 'none');
-            if(toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
+            if(toggleBtn) {
+                toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
+                // Apply Partial State Styles immediately
+                controlsArea.style.background = 'rgba(0, 0, 0, 0.6)'; 
+                controlsArea.style.backdropFilter = 'blur(4px)';
+                controlsArea.style.padding = '8px';
+            }
         }
     }
 
     // 1. Toggle Logic
     
+    // [NEW] Listener for Global Shortcut from Main Process
+    ipcRenderer.on('reset-ui-controls', () => {
+        if (!controlsArea) return;
+        
+        // Same logic as double-click reset
+        controlsArea.classList.remove('collapsed');
+        controlsArea.style.display = 'flex';
+        controlsArea.style.opacity = '1';
+        controlsArea.style.background = '';
+        controlsArea.style.backdropFilter = '';
+        controlsArea.style.border = '';
+        
+        if(toggleBtn) toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
+        const btns = controlsArea.querySelectorAll('button:not(#btn-toggle-controls)');
+        btns.forEach(b => b.style.display = 'flex');
+        
+        localStorage.setItem('controlsState', 'expanded');
+        
+        controlsArea.style.position = 'absolute';
+        controlsArea.style.left = '50%';
+        controlsArea.style.top = 'auto'; // Clear top override
+        controlsArea.style.bottom = '40px'; // Default bottom
+        controlsArea.style.transform = 'translateX(-50%)'; // Center align
+        controlsArea.style.flexDirection = 'row'; 
+        
+        localStorage.removeItem('controlsPos');
+        
+        // [FIX] Force Top on Shortcut too
+        ipcRenderer.send('force-top');
+        
+        showBubble("UI Recovered! 🚑");
+    });
+
     if (toggleBtn) {
+        // [FIX] Double Click to Reset Position (Safe Return)
+        toggleBtn.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            // 1. Force Expand
+            controlsArea.classList.remove('collapsed');
+            
+            // 2. Reset visual style
+            controlsArea.style.display = 'flex';
+            controlsArea.style.opacity = '1'; /* Ensure fully visible */
+            controlsArea.style.background = ''; // Reverts to CSS
+            controlsArea.style.backdropFilter = ''; // Reverts to CSS
+            controlsArea.style.border = ''; // Reverts to CSS
+            
+            // 3. Reset internal state
+            toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
+            const btns = controlsArea.querySelectorAll('button:not(#btn-toggle-controls)');
+            btns.forEach(b => b.style.display = 'flex');
+            
+            localStorage.setItem('controlsState', 'expanded');
+            
+            // 4. Force Reset Position to Bottom Center
+            controlsArea.style.position = 'absolute';
+            controlsArea.style.left = '50%';
+            controlsArea.style.top = 'auto'; // Clear top override
+            controlsArea.style.bottom = '40px'; // Default bottom
+            controlsArea.style.transform = 'translateX(-50%)'; // Center align
+            controlsArea.style.flexDirection = 'row'; // Align row
+            
+            localStorage.removeItem('controlsPos');
+            
+            // [FIX] Tell Main Process to force Z-Index top
+            ipcRenderer.send('force-top');
+            
+            showBubble("Controls Reset 🔄");
+        });
+
         toggleBtn.addEventListener('click', (e) => {
             e.stopPropagation(); // Don't trigger drag
             controlsArea.classList.toggle('collapsed');
             const isCollapsed = controlsArea.classList.contains('collapsed');
 
-            // Save State
             localStorage.setItem('controlsState', isCollapsed ? 'collapsed' : 'expanded');
 
-            // Hide/Show other buttons
             const btns = controlsArea.querySelectorAll('button:not(#btn-toggle-controls)');
             btns.forEach(b => b.style.display = isCollapsed ? 'none' : 'flex');
 
-            // Toggle Icon
-            toggleBtn.innerHTML = isCollapsed ? '<i class="fas fa-bars"></i>' : '<i class="fas fa-times"></i>';
+            // [NEW] Partial State Logic - Better Visibility
+            if (isCollapsed) {
+                toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
+                // Distinctive "Docked" Look - Darker, clearer
+                controlsArea.style.background = 'rgba(0, 0, 0, 0.6)'; 
+                controlsArea.style.backdropFilter = 'blur(4px)';
+                // Ensure it's big enough to hit
+                controlsArea.style.padding = '8px';
+            } else {
+                toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
+                // Restore full visibility
+                controlsArea.style.background = ''; // Reverts to CSS
+                controlsArea.style.backdropFilter = ''; // Reverts to CSS
+                controlsArea.style.padding = '';
+            }
         });
 
         // Ensure transparency works on toggle
-        toggleBtn.addEventListener('mouseenter', () => ipcRenderer.send('set-ignore-mouse-events', false));
-        toggleBtn.addEventListener('mouseleave', () => {
-            // Only ignore if not dragging
-            if (!isDraggingControls) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
-        });
+        toggleBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+        // [FIX] Removed specific mouseleave here to rely on container
     }
 
     // 2. Drag Logic
@@ -1844,6 +1931,26 @@ document.addEventListener('DOMContentLoaded', () => {
     let startX, startY, initialLeft, initialTop;
 
     if (controlsArea) {
+        // [FIX] Container-Level Interaction with Safety Delay
+        let safetyTimer = null;
+
+        controlsArea.addEventListener('mouseenter', () => {
+             if (safetyTimer) clearTimeout(safetyTimer);
+             setIgnoreMouseEvents(false);
+        });
+        
+        controlsArea.addEventListener('mouseleave', () => {
+             // Delay "ignoring" to prevent flickering when moving fast or between gaps
+             if (safetyTimer) clearTimeout(safetyTimer);
+             
+             safetyTimer = setTimeout(() => {
+                 if (!isDraggingControls && !isModalOpen) {
+                     setIgnoreMouseEvents(true);
+                 }
+             }, 350); // 350ms grace period
+        });
+
+
         controlsArea.addEventListener('mousedown', (e) => {
             // Allow dragging from buttons too, just NOT the toggle button
             if (e.target.closest('#btn-toggle-controls')) return;

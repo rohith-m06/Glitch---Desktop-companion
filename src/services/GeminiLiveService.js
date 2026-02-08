@@ -8,10 +8,37 @@ class GeminiLiveService extends EventEmitter {
         this.automationAgent = automationAgent; // Instance of GameAgent or similar
         this.ws = null;
         this.isActive = false;
+        this.actionHandler = async (action) => "Action handler not configured"; // [NEW] Default handler
         // Updated to use a model available to the user. 
         // Trying 'gemini-3-flash-preview' as it appears in the user's available models list.
         // If this fails, 'gemini-2.5-flash-native-audio-latest' is another strong candidate.
         this.model = 'gemini-2.5-flash-native-audio-preview-12-2025'; 
+        this.visionEnabled = false; // [NEW] Track vision permissions
+    }
+
+    // [NEW] Allow Main Process to inject the action handler
+    setActionHandler(handler) {
+        this.actionHandler = handler;
+    }
+
+    setVisionEnabled(enabled) {
+        this.visionEnabled = enabled;
+        // [NEW] Notify the model about the state change contextually
+        if (this.isActive && this.ws && this.ws.readyState === 1) {
+            const stateMsg = enabled 
+                ? "SYSTEM: Vision Mode ENABLED. You can now see the screen." 
+                : "SYSTEM: Vision Mode DISABLED. You are now blind and cannot see the screen.";
+            
+            this.ws.send(JSON.stringify({
+                client_content: {
+                    turns: [{
+                        role: "user",
+                        parts: [{ text: stateMsg }]
+                    }],
+                    turn_complete: true
+                }
+            }));
+        }
     }
 
     start() {
@@ -83,10 +110,27 @@ class GeminiLiveService extends EventEmitter {
         this.ws.send(JSON.stringify(msg));
     }
 
+    sendImageChunk(base64Image) {
+        if (!this.isActive || !this.ws || this.ws.readyState !== 1) return;
+        
+        const msg = {
+            realtime_input: {
+                media_chunks: [{
+                    mime_type: "image/jpeg", // [FIX] Changed to JPEG for performance
+                    data: base64Image
+                }]
+            }
+        };
+        this.ws.send(JSON.stringify(msg));
+    }
+
     _sendInitialSetup() {
         const setupMsg = {
             setup: {
                 model: `models/${this.model}`,
+                system_instruction: {
+                    parts: [{ text: "You are an AI companion. Defaults: Vision is OFF. You effectively BLIND unless 'Vision Mode' is successfully enabled. If asked to look at something when Vision is off, politely ask the user to toggle the Eye button. Do not guess or analyze past frames. When performing actions (msg, open, search), WAIT for the tool to return 'success' or 'fail' before confirming to the user." }]
+                },
                 generation_config: {
                     response_modalities: ["AUDIO"],
                     speech_config: {
@@ -194,41 +238,52 @@ class GeminiLiveService extends EventEmitter {
         if (!functionCalls || functionCalls.length === 0) return;
 
         for (const call of functionCalls) {
-            let result = {};
-            
-            // --- FAST ACTIONS (Direct IPC) ---
+            // [FIX] Await the real action handler to capture errors/results before responding
             if (call.name === "open_url") {
                 const url = call.args.url;
-                this.emit('tool-action', { type: 'open', url: url });
-                result = { output: `Opened ${url}` };
+                try {
+                    const output = await this.actionHandler({ type: 'open', url: url });
+                    result = { output: output || `Opened ${url}` };
+                } catch (e) { result = { error: e.message }; }
             }
             else if (call.name === "google_search") {
                 const query = call.args.query;
-                this.emit('tool-action', { type: 'search', query: query });
-                result = { output: `Searched for ${query}` };
+                try {
+                    const output = await this.actionHandler({ type: 'search', query: query });
+                    result = { output: output || `Searched for ${query}` };
+                } catch (e) { result = { error: e.message }; }
             }
             else if (call.name === "launch_app") {
                 const appName = call.args.appName;
-                this.emit('tool-action', { type: 'app', app: appName });
-                result = { output: `Launched ${appName}` };
+                try {
+                    const output = await this.actionHandler({ type: 'app', app: appName });
+                    result = { output: output || `Launched ${appName}` };
+                } catch (e) { result = { error: e.message }; }
             }
             else if (call.name === "type_text") {
                 const text = call.args.text;
-                this.emit('tool-action', { type: 'type', text: text });
-                result = { output: `Typed text` };
+                try {
+                    const output = await this.actionHandler({ type: 'type', text: text });
+                    result = { output: output || `Typed text` };
+                } catch (e) { result = { error: e.message }; }
             }
             // --- SLOW ACTION (Visual Agent) ---
             else if (call.name === "run_automation_task") {
-                const taskDescription = call.args.description;
-                console.log(`[GeminiLive] Handoff to Automation: "${taskDescription}"`);
-                try {
-                    if (this.automationAgent.isActive) {
-                         this.automationAgent.stop();
+                if (!this.visionEnabled) {
+                    console.log(`[GeminiLive] Blocked Visual Task: Vision Disabled`);
+                    result = { output: "I cannot see the screen right now. Please tell the user to turn on the Vision (Eye) button." };
+                } else {
+                    const taskDescription = call.args.description;
+                    console.log(`[GeminiLive] Handoff to Automation: "${taskDescription}"`);
+                    try {
+                        if (this.automationAgent.isActive) {
+                             this.automationAgent.stop();
+                        }
+                        this.automationAgent.start(taskDescription);
+                        result = { output: "I have started the visual agent for this task." };
+                    } catch (error) {
+                        result = { error: "Failed to start task: " + error.message };
                     }
-                    this.automationAgent.start(taskDescription);
-                    result = { output: "I have started the visual agent for this task." };
-                } catch (error) {
-                    result = { error: "Failed to start task: " + error.message };
                 }
             }
 
