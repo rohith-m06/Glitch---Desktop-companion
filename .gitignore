@@ -28,3 +28,9 @@ Thumbs.db
 
 # Audio files (generated)
 src/assets/audio/*.mp3
+
+# Vision capabilities screenshots (Sensitive & Heavy)
+vision/
+*.png
+!src/assets/**/*.png
+!build/**/*.png

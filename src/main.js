@@ -1,5 +1,5 @@
 // src/main.js - Electron Main Process
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 // [FIX] Explicit path for production (.env is in app root, main.js is in src/)
@@ -63,6 +63,11 @@ function createMainWindow() {
     skipTaskbar: true // Don't show in taskbar for overlay
   });
 
+  // [FIX] Force highest Z-Order to prevent going behind other apps
+  // 'screen-saver' level is one of the highest on Windows
+  mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
   // Default: Ignore mouse events (pass through)
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
@@ -115,6 +120,28 @@ function createMainWindow() {
 
 async function initApp() {
   try {
+    const { globalShortcut } = require('electron');
+    // Global Hotkey for Voice Mode (Ctrl+Shift+L)
+    globalShortcut.register('CommandOrControl+Shift+L', () => {
+        const service = getGeminiLiveService();
+        if (service.isActive) {
+             service.stop();
+             if(mainWindow) mainWindow.webContents.send('voice-mode-changed', false);
+        } else {
+             service.start();
+             if(mainWindow) mainWindow.webContents.send('voice-mode-changed', true);
+        }
+    });
+
+    // [NEW] Global Hotkey for UI Reset (Ctrl+Shift+R)
+    // Helps users recover the UI if it disappears or gets stuck
+    globalShortcut.register('CommandOrControl+Shift+R', () => {
+        if (mainWindow) {
+            console.log("🔄 Global Reset Triggered");
+            mainWindow.webContents.send('reset-ui-controls');
+        }
+    });
+
     const creds = await CredentialService.loadCredentials();
 
     if (creds.isComplete) {
@@ -128,6 +155,15 @@ async function initApp() {
   }
 }
 
+
+// [NEW] Allow Renderer to force window to top
+ipcMain.on('force-top', () => {
+    if (mainWindow) {
+        console.log("🔝 Forcing Window to Top");
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        mainWindow.moveTop();
+    }
+});
 
 // App lifecycle
 app.whenReady().then(initApp);
@@ -214,8 +250,8 @@ ipcMain.handle('capture-clean', async (event, options = { width: 1024, height: 5
 
   if (win) {
     win.setOpacity(0); // Faster than hide()
-    // Give OS a tiny bit of time to redraw (60ms is usually enough)
-    await new Promise(r => setTimeout(r, 60));
+    // Give OS a tiny bit of time to redraw (reduced to 20ms)
+    await new Promise(r => setTimeout(r, 20)); 
     const img = await captureScreen(options);
     win.setOpacity(1);
 
@@ -224,7 +260,8 @@ ipcMain.handle('capture-clean', async (event, options = { width: 1024, height: 5
       try {
         const visionDir = path.join(__dirname, '..', 'vision');
         if (!fs.existsSync(visionDir)) fs.mkdirSync(visionDir, { recursive: true });
-        const fileName = `voice-vision-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+        // Use JPEG extension
+        const fileName = `voice-vision-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
         fs.writeFileSync(path.join(visionDir, fileName), Buffer.from(img, 'base64'));
         console.log(`📸 Voice Vision saved: ${fileName}`);
       } catch (err) {
@@ -237,18 +274,28 @@ ipcMain.handle('capture-clean', async (event, options = { width: 1024, height: 5
   return null;
 });
 
-// Browser Automation Handler
-ipcMain.handle('perform-action', async (event, action) => {
+// Extracted logic for reusability
+async function handlePerformAction(event, action) {
+  const { shell } = require('electron'); // Ensure shell is available
   try {
     console.log('🤖 Performing action:', action);
 
     if (action.type === 'open') {
-      await Automation.navigate(action.url);
-      return "Opened " + action.url;
+      // Prefer system default browser for simple "Open" commands
+      // This is faster and uses the user's logged-in session (cookies etc)
+      let url = action.url;
+      if (!url.startsWith('http')) url = 'https://' + url;
+      
+      console.log(`Open External: ${url}`);
+      await shell.openExternal(url);
+      return "Opened " + url;
     }
 
     if (action.type === 'search') {
-      await Automation.search(action.query);
+      // Use system browser for search too
+      const query = encodeURIComponent(action.query);
+      const url = `https://www.google.com/search?q=${query}`;
+      await shell.openExternal(url);
       return "Searched for " + action.query;
     }
 
@@ -318,7 +365,10 @@ ipcMain.handle('perform-action', async (event, action) => {
     console.error('Automation failed:', error);
     return "Failed: " + error.message;
   }
-});
+}
+
+// Browser Automation Handler
+ipcMain.handle('perform-action', handlePerformAction);
 
 // Project Creation Handler
 ipcMain.handle('create-project', async (event, { name, description, projectType }) => {
@@ -366,6 +416,95 @@ ipcMain.handle('start-game-agent', async (event, instruction) => {
   agent.start(instruction);
   return "Game Agent Started";
 });
+
+// Gemini Live Voice Mode Setup
+let geminiLiveInstance = null;
+function getGeminiLiveService() {
+  if (!geminiLiveInstance) {
+    const GeminiLiveService = require('./services/GeminiLiveService');
+    const agent = getGameAgent();
+    geminiLiveInstance = new GeminiLiveService(process.env.GEMINI_API_KEY, agent);
+    
+    // Wire up audio output
+    geminiLiveInstance.on('audio', (data) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('play-audio-chunk', data);
+      }
+    });
+
+    // [FIX] Use synchronous handler instead of event to ensure AI waits for result
+    geminiLiveInstance.setActionHandler(async (action) => {
+        // console.log(`[GeminiLive] Executing Action:`, action);
+        return await handlePerformAction(null, action);
+    });
+
+  }
+  return geminiLiveInstance;
+}
+
+ipcMain.handle('toggle-voice-mode', async () => {
+  const service = getGeminiLiveService();
+  if (service.isActive) {
+    service.stop();
+    if(mainWindow) mainWindow.webContents.send('voice-mode-changed', false);
+    return false;
+  } else {
+    service.start();
+    if(mainWindow) mainWindow.webContents.send('voice-mode-changed', true);
+    return true;
+  }
+});
+
+ipcMain.on('audio-input-chunk', (event, chunk) => {
+   const service = getGeminiLiveService();
+   if (service.isActive) {
+       // chunk is usually base64 from renderer
+       service.sendAudioChunk(chunk);
+   }
+});
+
+let visionInterval = null;
+
+ipcMain.on('vision-mode-changed', (event, isActive) => {
+   const service = getGeminiLiveService();
+   service.setVisionEnabled(isActive); // [NEW] Enforce permissions
+   
+   if (isActive) {
+       console.log("👁️ Vision Mode Activated");
+       if (visionInterval) clearInterval(visionInterval);
+       
+       // Start Vision Loop (Every 2 seconds)
+       visionInterval = setInterval(async () => {
+           try {
+                // If service isn't active, no need to capture
+                if (!service.isActive) return;
+
+                const { captureScreen } = require('./services/ScreenObserver');
+                // [OPTIMIZATION] Reduce resolution for speed (1280x720 is plenty for AI)
+                const img = await captureScreen({ width: 1280, height: 720 });
+
+                // Send to Gemini
+                service.sendImageChunk(img);
+
+                // Save to vision folder (User Legacy Request)
+                const visionDir = path.join(__dirname, '..', 'vision');
+                if (!fs.existsSync(visionDir)) fs.mkdirSync(visionDir, { recursive: true });
+                fs.writeFileSync(path.join(visionDir, 'latest_vision_capture.jpg'), Buffer.from(img, 'base64'));
+
+           } catch (e) {
+               console.error("Vision Loop Error:", e);
+           }
+       }, 2000); 
+
+   } else {
+       console.log("👁️ Vision Mode Deactivated");
+       if (visionInterval) {
+           clearInterval(visionInterval);
+           visionInterval = null;
+       }
+   }
+});
+// End Gemini Live Setup
 
 ipcMain.handle('stop-game-agent', async () => {
   const agent = getGameAgent();
