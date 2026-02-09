@@ -2,10 +2,11 @@ const { WebSocket } = require('ws');
 const EventEmitter = require('events');
 
 class GeminiLiveService extends EventEmitter {
-    constructor(apiKey, automationAgent) {
+    constructor(apiKey, automationAgent, voiceName = "Puck") {
         super();
         this.apiKey = apiKey;
         this.automationAgent = automationAgent; // Instance of GameAgent or similar
+        this.voiceName = voiceName;
         this.ws = null;
         this.isActive = false;
         this.actionHandler = async (action) => "Action handler not configured"; // [NEW] Default handler
@@ -129,14 +130,14 @@ class GeminiLiveService extends EventEmitter {
             setup: {
                 model: `models/${this.model}`,
                 system_instruction: {
-                    parts: [{ text: "You are an AI companion. Defaults: Vision is OFF. You effectively BLIND unless 'Vision Mode' is successfully enabled. If asked to look at something when Vision is off, politely ask the user to toggle the Eye button. Do not guess or analyze past frames. When performing actions (msg, open, search), WAIT for the tool to return 'success' or 'fail' before confirming to the user." }]
+                    parts: [{ text: "You are 'Glitch', a witty, humorous, and slightly chaotic AI desktop companion. You have a fun personality, love making universal jokes, and occasionally break the fourth wall. You are helpful but with a splash of friendly sass. Defaults: Vision is OFF. You effectively BLIND unless 'Vision Mode' is successfully enabled. If asked to look at something when Vision is off, playfully ask the user to hit the Eye button so you can see. Do not guess or analyze past frames. IMPORTANT: When asked to write notes, lists, or recipes to Notepad, GENERATE the content from your own knowledge. Do NOT use 'google_search' unless the user explicitly asks to 'search' or 'find online'. When performing actions (msg, open, search), WAIT for the tool to return 'success' or 'fail' before confirming to the user." }]
                 },
                 generation_config: {
                     response_modalities: ["AUDIO"],
                     speech_config: {
                         voice_config: {
                             prebuilt_voice_config: {
-                                voice_name: "Aoede"
+                                voice_name: this.voiceName
                             }
                         }
                     }
@@ -197,6 +198,17 @@ class GeminiLiveService extends EventEmitter {
                                 },
                                 required: ["text"]
                             }
+                        },
+                        {
+                            name: "write_note",
+                            description: "Composite Action: Opens Notepad and writes the provided text into it. Use this when asked to 'take a note' or 'write in notepad'.",
+                            parameters: {
+                                type: "OBJECT",
+                                properties: {
+                                    text: { type: "STRING", description: "The text to write in the note" }
+                                },
+                                required: ["text"]
+                            }
                         }
                     ]
                 }]
@@ -238,12 +250,25 @@ class GeminiLiveService extends EventEmitter {
         if (!functionCalls || functionCalls.length === 0) return;
 
         for (const call of functionCalls) {
+            let result = {};
             // [FIX] Await the real action handler to capture errors/results before responding
             if (call.name === "open_url") {
                 const url = call.args.url;
                 try {
                     const output = await this.actionHandler({ type: 'open', url: url });
                     result = { output: output || `Opened ${url}` };
+                } catch (e) { result = { error: e.message }; }
+            }
+            else if (call.name === "write_note") {
+                const text = call.args.text;
+                try {
+                    // 1. Launch Notepad
+                    await this.actionHandler({ type: 'app', app: 'notepad' });
+                    // 2. Wait for it to open (2.5s)
+                    await new Promise(r => setTimeout(r, 2500));
+                    // 3. Paste Content (Dump)
+                    const output = await this.actionHandler({ type: 'paste', text: text });
+                    result = { output: "Success: Opened Notepad and dumped the note." };
                 } catch (e) { result = { error: e.message }; }
             }
             else if (call.name === "google_search") {

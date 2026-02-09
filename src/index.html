@@ -27,31 +27,36 @@
         </div>
 
         <!-- Floating UI: Controls -->
-        <div class="controls-area">
-            <button id="btn-toggle-controls" class="mic-button"
-                style="z-index: 10000; cursor: pointer; background: #333; width: 40px; height: 40px; font-size: 1em;"
-                title="Expand/Collapse">
-                <i class="fas fa-bars"></i>
+        <div class="controls-overlay">
+            <!-- Toggle Button (Fixed Anchor) -->
+            <button id="btn-toggle-controls" class="toggle-fab" title="Expand/Collapse">
+                <i class="fas fa-times"></i>
             </button>
-            <button id="btn-mic" class="mic-button" style="z-index: 9999; cursor: pointer;">
-                <i class="fas fa-microphone"></i>
-            </button>
-            <button id="btn-vision" class="mic-button" style="z-index: 9999; cursor: pointer; background: #666;"
-                title="Toggle Screen Vision (Off)">
-                <i class="fas fa-eye-slash"></i>
-            </button>
-            <button id="btn-game-mode" class="mic-button" style="z-index: 9999; cursor: pointer; background: #cd5c5c;"
-                title="Toggle Agent Mode">
-                <i class="fas fa-robot"></i>
-            </button>
-            <button id="btn-settings" class="mic-button" style="z-index: 9999; cursor: pointer; background: #64748b;"
-                title="Settings & Customization">
-                <i class="fas fa-cog"></i>
-            </button>
-            <button id="btn-quit" class="mic-button" style="z-index: 9999; cursor: pointer; background: #ef4444;"
-                title="Quit App">
-                <i class="fas fa-power-off"></i>
-            </button>
+
+            <!-- Actions Stack (Expands Upwards) -->
+            <div id="actions-stack" class="actions-stack">
+                <!-- Visual Order: Bottom (Mic) to Top (Quit) -->
+                
+                <button id="btn-mic" class="action-btn mic-btn-style" title="Microphone">
+                    <i class="fas fa-microphone"></i>
+                </button>
+
+                <button id="btn-vision" class="action-btn" style="background: #666;" title="Toggle Screen Vision (Off)">
+                    <i class="fas fa-eye-slash"></i>
+                </button>
+
+                <button id="btn-game-mode" class="action-btn" style="background: #cd5c5c;" title="Toggle Agent Mode">
+                    <i class="fas fa-robot"></i>
+                </button>
+
+                <button id="btn-settings" class="action-btn" style="background: #64748b;" title="Settings & Customization">
+                    <i class="fas fa-cog"></i>
+                </button>
+
+                <button id="btn-quit" class="action-btn" style="background: #ef4444;" title="Quit App">
+                    <i class="fas fa-power-off"></i>
+                </button>
+            </div>
         </div>
     </div>
 

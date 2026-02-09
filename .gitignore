@@ -34,3 +34,7 @@ vision/
 *.png
 !src/assets/**/*.png
 !build/**/*.png
+
+# Generated Images
+generated_images/*
+!generated_images/.gitkeep

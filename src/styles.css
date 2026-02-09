@@ -240,55 +240,111 @@ header:hover {
     opacity: 1;
 }
 
-/* Controls - Floating Bottom Center */
-.controls-area {
-    position: absolute;
+/* Controls - Floating Bottom Right Stack */
+.controls-overlay {
+    position: fixed;
     bottom: 40px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 100;
+    right: 20px;
+    z-index: 9999;
     display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    cursor: move;
-    background: rgba(0, 0, 0, 0.4);
-    padding: 5px 10px;
-    border-radius: 30px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: flex-direction 0.3s ease, padding 0.3s ease;
+    flex-direction: column-reverse; /* Toggle at bottom */
+    align-items: flex-end; /* Align to right */
+    gap: 12px;
+    pointer-events: none; /* Pass clicks through empty areas */
 }
 
-/* Mic Button */
-.mic-button {
-    width: 55px;
-    height: 55px;
-    font-size: 1.3em;
-    background: rgba(240, 147, 251, 0.9);
-    border: 3px solid white;
+.controls-overlay button {
+    pointer-events: auto; /* Re-enable clicks on buttons */
+}
+
+/* Toggle FAB (Main Button) */
+.toggle-fab {
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    background: #333;
     color: white;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10000;
 }
 
-.mic-button:hover {
-    transform: scale(1.05);
-    background: rgba(240, 147, 251, 1);
+.toggle-fab:hover {
+    background: #444;
 }
 
-.mic-button.listening {
-    background: #ff4444 !important;
-    /* Bright Red */
-    transform: scale(1.1);
-    box-shadow: 0 0 25px rgba(255, 68, 68, 0.8);
-    border-color: #ffcccc;
+.toggle-fab:active {
+    transform: scale(0.95);
+}
+
+/* Actions Stack Container */
+.actions-stack {
+    display: flex;
+    flex-direction: column-reverse; /* Bottom to Top visual order */
+    gap: 12px;
+    /* Animation */
+    animation: slideInUp 0.2s ease-out forwards;
+    padding-bottom: 4px; /* Spacing */
+}
+
+.actions-stack.hidden {
+    display: none;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Generic Action Button */
+.action-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+    filter: brightness(1.2);
+}
+
+.action-btn:active {
+    transform: scale(0.95);
+}
+
+/* Specific Mic Button Styling */
+.mic-btn-style {
+    background: white;
+    color: black;
+}
+
+.mic-btn-style:hover {
+    background: #f3f4f6;
+}
+
+.mic-btn-style.listening {
+    background: #ef4444 !important;
+    color: white !important;
     animation: pulse 1.5s infinite;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
 }
 
 @keyframes pulse {
