@@ -336,6 +336,21 @@ async function handlePerformAction(event, action) {
       return "Typing: " + action.text;
     }
 
+    // [NEW] Paste Text
+    if (action.type === 'paste') {
+        const { clipboard } = require('electron');
+        const InputController = require('./services/InputController');
+        
+        clipboard.writeText(action.text);
+        
+        // Ctrl + V
+        InputController.keyDown('ctrl');
+        setTimeout(() => InputController.pressKey('v'), 50);
+        setTimeout(() => InputController.keyUp('ctrl'), 100);
+        
+        return "Pasted text";
+    }
+
     // Phase 8: Real-time Input
     if (action.type === 'pressKey') {
       const InputController = require('./services/InputController');
@@ -423,7 +438,9 @@ function getGeminiLiveService() {
   if (!geminiLiveInstance) {
     const GeminiLiveService = require('./services/GeminiLiveService');
     const agent = getGameAgent();
-    geminiLiveInstance = new GeminiLiveService(process.env.GEMINI_API_KEY, agent);
+    // [NEW] Pass voice preference
+    const voiceName = process.env.GEMINI_VOICE_NAME || "Puck";
+    geminiLiveInstance = new GeminiLiveService(process.env.GEMINI_API_KEY, agent, voiceName);
     
     // Wire up audio output
     geminiLiveInstance.on('audio', (data) => {
@@ -515,6 +532,14 @@ ipcMain.handle('stop-game-agent', async () => {
 ipcMain.handle('save-setup-info', async (event, data) => {
   const CredentialService = require('./services/CredentialService');
   CredentialService.saveCredentials(data);
+  
+  // [NEW] Reset Gemini Live instance so it picks up the new voice/key on next use
+  if (geminiLiveInstance) {
+      if (geminiLiveInstance.isActive) geminiLiveInstance.stop();
+      geminiLiveInstance = null;
+      console.log('🔄 Gemini Service reset with new settings');
+  }
+  
   return true;
 });
 

@@ -106,6 +106,12 @@ const InputController = {
         sendCommand({ type: 'type', text });
     },
 
+    // [NEW] Paste function for bulk text
+    paste: (text) => {
+        // We will send a special 'paste' command
+        sendCommand({ type: 'paste', text });
+    },
+
     pressKey: (key) => {
         sendCommand({ type: 'press', key });
     },

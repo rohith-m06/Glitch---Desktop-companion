@@ -41,26 +41,37 @@ class CredentialService {
             process.env.GEMINI_API_KEY = geminiKey;
         }
 
+        // --- VOICE LOGIC ---
+        let geminiVoice = this.store.get('gemini_voice_name') || "Puck";
+        process.env.GEMINI_VOICE_NAME = geminiVoice;
+
         return {
             geminiKey,
             usingDefaultGemini,
+            geminiVoice, // [NEW] Return voice
             isComplete: !!geminiKey
         };
     }
 
-    saveCredentials({ geminiKey }) {
+    saveCredentials({ geminiKey, geminiVoice }) {
         if (geminiKey) this.store.set('google_api_key', geminiKey);
         else if (geminiKey === '') this.store.delete('google_api_key');
+
+        if (geminiVoice) this.store.set('gemini_voice_name', geminiVoice);
 
         // Update current session
         if (geminiKey) {
             process.env.GOOGLE_API_KEY = geminiKey;
             process.env.GEMINI_API_KEY = geminiKey;
         }
+        if (geminiVoice) {
+            process.env.GEMINI_VOICE_NAME = geminiVoice;
+        }
     }
 
     clearCredentials() {
         this.store.delete('google_api_key');
+        this.store.delete('gemini_voice_name');
         this.store.delete('eleven_api_key');
         this.store.delete('eleven_voice_id');
     }
